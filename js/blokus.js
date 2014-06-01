@@ -53,6 +53,7 @@ function rotate(elem, dir, x, y) {
     setTimeout(function() {elem.className = 'piece rotating'}, 0);
     break;
   }
+  window.getComputedStyle(elem).transform;  // force style update
 
   elem.direction = dir;
   var rot = blockSet[elem.blockId].rotations[dir];
@@ -61,15 +62,13 @@ function rotate(elem, dir, x, y) {
     elem.childNodes[i].style.top = rot.coords[i].y * SCALE + 'px';
   }
   if (x != undefined) {
-    setTimeout(function() {  // Avoid Chrome bug(?)
-      elem.style.left = x - SCALE / 2 + 'px';
-      elem.style.top = y - SCALE / 2 + 'px';
-    }, 0);
+    elem.style.left = x - SCALE / 2 + 'px';
+    elem.style.top = y - SCALE / 2 + 'px';
   }
 }
 
 function toBoardPosition(x, y) {
-  var boardStyle = getStyle('board');
+  var boardStyle = window.getComputedStyle(document.getElementById('board'));
   x -= parseInt(boardStyle.left) + parseInt(boardStyle.borderLeftWidth);
   y -= parseInt(boardStyle.top) + parseInt(boardStyle.borderTopWidth);
   x = Math.round(x / SCALE);
@@ -81,7 +80,7 @@ function toBoardPosition(x, y) {
 }
 
 function fromBoardPosition(pos) {
-  var boardStyle = getStyle('board');
+  var boardStyle = window.getComputedStyle(document.getElementById('board'));
   return {
     x: pos.x * SCALE + parseInt(boardStyle.left) +
       parseInt(boardStyle.borderLeftWidth),
@@ -160,7 +159,7 @@ var piecePositionTable = [ // x, y, dir
 ];
 
 function createPieces() {
-  var area = getStyle('piece-area');
+  var area = window.getComputedStyle(document.getElementById('piece-area'));
   var left = parseInt(area.left) + parseInt(area.paddingLeft);
   var top = parseInt(area.top) + parseInt(area.paddingTop);
   for (var i = 0; i < piecePositionTable.length; i++) {
@@ -248,35 +247,28 @@ function updateScore() {
 function opponentMove() {
   setActiveArea();
   showMessage(['Orange', 'Violet'][Blokus.player] + ' plays');
-
-  Blokus.worker.postMessage({'path': Blokus.board.getPath(),
-                             'level': Blokus.level});
+  Blokus.backend.request(Blokus.board.getPath(), Blokus.level);
 }
 
-function setupWorker() {
-  Blokus.worker = new Worker('hm5move.js');
-  Blokus.worker.addEventListener('message', function(e) {
-    var move = new Move(e.data.move);
-    console.log(e.data.nps + ' nps');
-    Blokus.board.doMove(move);
-    if (!move.isPass())
-      document.getElementById('o' + move.blockId()).style.visibility = 'hidden';
-    hideMessage();
-    updateBoardView(move);
-    updateScore();
-    createPieces();
-    setActiveArea();
-    // window.location.replace('#' + Blokus.board.getPath());
-    if (!Blokus.board.canMove()) {
-      if (move.isPass())
-        gameEnd();
-      else {
-        Blokus.board.doPass();
-        opponentMove();
-      }
-      return;
+function onOpponentMove(move) {
+  Blokus.board.doMove(move);
+  if (!move.isPass())
+    document.getElementById('o' + move.blockId()).style.visibility = 'hidden';
+  hideMessage();
+  updateBoardView(move);
+  updateScore();
+  createPieces();
+  setActiveArea();
+  // window.location.replace('#' + Blokus.board.getPath());
+  if (!Blokus.board.canMove()) {
+    if (move.isPass())
+      gameEnd();
+    else {
+      Blokus.board.doPass();
+      opponentMove();
     }
-  });
+    return;
+  }
 }
 
 function gameEnd() {
@@ -339,7 +331,7 @@ function init() {
   if (path) {
     Blokus.board = new Board(path);
     Blokus.player = Blokus.board.player();
-    setupWorker();
+    Blokus.backend = createBackend(onOpponentMove);
     startGame(path);
   }
 }
@@ -347,7 +339,7 @@ function init() {
 function startButton(player) {
   Blokus.board = new Board();
   Blokus.player = player;
-  setupWorker();
+  Blokus.backend = createBackend(onOpponentMove);
   startGame();
   if (player == 1)
     opponentMove();
@@ -360,7 +352,6 @@ function setLevel(lv) {
 // event handlers
 
 function wheel(e) {
-  e = getEvent(e);
   e.stopPropagation();
   e.preventDefault();
 
@@ -372,8 +363,8 @@ function wheel(e) {
   if (Blokus.board.player() != Blokus.player)
     return;
   var raw = e.detail ? e.detail : -e.wheelDelta;
-  var x = e.clientX + getHScroll();
-  var y = e.clientY + getVScroll();
+  var x = e.clientX + window.pageXOffset;
+  var y = e.clientY + window.pageYOffset;
   if (raw < 0)
     rotate(this, 'left', x, y);
   else
@@ -381,34 +372,30 @@ function wheel(e) {
 }
 
 function click(e) {
-  e = getEvent(e);
   if (!e.shiftKey) // handle only shift+click
     return;
 
   if (Blokus.board.player() != Blokus.player)
     return;
 
-  var x = e.clientX + getHScroll();
-  var y = e.clientY + getVScroll();
+  var x = e.clientX + window.pageXOffset;
+  var y = e.clientY + window.pageYOffset;
   rotate(this, 'right', x, y);
 }
 
 function dblclick(e) {
-  e = getEvent(e);
   if (e.shiftKey) // do not handle shift+dblclick
     return;
 
   if (Blokus.board.player() != Blokus.player)
     return;
 
-  var x = e.clientX + getHScroll();
-  var y = e.clientY + getVScroll();
+  var x = e.clientX + window.pageXOffset;
+  var y = e.clientY + window.pageYOffset;
   rotate(this, 'flip', x, y);
 }
 
 function drag(e) {
-  e = getEvent(e);
-
   if (Blokus.board.player() != Blokus.player)
     return;
 
@@ -424,25 +411,15 @@ function drag(e) {
   var deltaY = e.clientY - this.offsetTop;
   var touchClick = true;
 
-  if (document.addEventListener) {
-    document.addEventListener('mousemove', moveHandler, true);
-    document.addEventListener('mouseup', upHandler, true);
-    elem.addEventListener('touchmove', moveHandler, false);
-    elem.addEventListener('touchend', upHandler, false);
-  }
-  else { // for IE
-    elem.setCapture();
-    elem.attachEvent('onmousemove', moveHandler);
-    elem.attachEvent('onmouseup', upHandler);
-    elem.attachEvent('onlosecapture', upHandler);
-  }
+  document.addEventListener('mousemove', moveHandler, true);
+  document.addEventListener('mouseup', upHandler, true);
+  elem.addEventListener('touchmove', moveHandler, false);
+  elem.addEventListener('touchend', upHandler, false);
 
   e.stopPropagation();
   e.preventDefault();
 
   function moveHandler(e) {
-    e = getEvent(e);
-
     if (e.targetTouches) {
       if (e.targetTouches.length != 1)
         return;
@@ -471,8 +448,6 @@ function drag(e) {
   }
 
   function upHandler(e) {
-    e = getEvent(e);
-
     if (e.targetTouches) {
       if (e.targetTouches.length > 0)
         return;
@@ -484,18 +459,10 @@ function drag(e) {
         rotate(elem, 'cyclic');
     }
 
-    if (document.removeEventListener) {
-      document.removeEventListener('mouseup', upHandler, true);
-      document.removeEventListener('mousemove', moveHandler, true);
-      elem.removeEventListener('touchend', upHandler, false);
-      elem.removeEventListener('touchmove', moveHandler, false);
-    }
-    else { // for IE
-      elem.detachEvent('onlosecapture', upHandler);
-      elem.detachEvent('onmouseup', upHandler);
-      elem.detachEvent('onmousemove', moveHandler);
-      elem.releaseCapture();
-    }
+    document.removeEventListener('mouseup', upHandler, true);
+    document.removeEventListener('mousemove', moveHandler, true);
+    elem.removeEventListener('touchend', upHandler, false);
+    elem.removeEventListener('touchmove', moveHandler, false);
     e.stopPropagation();
 
     var bpos = toBoardPosition(e.clientX - deltaX, e.clientY - deltaY);
@@ -511,39 +478,4 @@ function drag(e) {
       }
     }
   }
-}
-
-// utility functions for cross-browser support
-
-function getStyle(elem) {
-  if (typeof elem == 'string')
-    elem = document.getElementById(elem);
-  if (elem.currentStyle)
-    return elem.currentStyle;
-  else
-    return window.getComputedStyle(elem, null);
-}
-
-function getHScroll() {
-  if (window.pageXOffset !== undefined)
-    return window.pageXOffset;
-  else
-    return document.body.scrollLeft;
-}
-
-function getVScroll() {
-  if (window.pageYOffset !== undefined)
-    return window.pageYOffset;
-  else
-    return document.documentElement.scrollTop;
-}
-
-function getEvent(e) {
-  if (!e)
-    e = window.event;
-  if (!e.stopPropagation)
-    e.stopPropagation = function() { this.cancelBubble = true; }
-  if (!e.preventDefault)
-    e.preventDefault = function() { this.returnValue = false; }
-  return e;
 }

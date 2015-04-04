@@ -2,7 +2,7 @@ importScripts('serviceworker-cache-polyfill.js');
 
 var CACHE_NAME = 'v1';
 var urlsToCache = [
-  '/blokus_m.html',
+  'blokus_m.html',
   'css/blokus_m.css',
   'css/navigation.css',
   'js/piece.js',
